@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "@octokit/rest": "^18.5.2"
+  },
+  "devDependencies": {
+    "local-web-server": "^4.2.1",
+    "snowpack": "^3.3.0"
+  }
+}

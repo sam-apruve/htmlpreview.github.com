@@ -1,48 +1,105 @@
 <!DOCTYPE html>
 <html>
 <head>
-	<meta charset="utf-8">
-	<title>GitHub &amp; BitBucket HTML Preview</title>
-	<style>
-	body {
-		font: 12px 'Helvetica Neue', Helvetica, Arial, freesans, clean, sans-serif;
-		color: #333;
-	}
-	h1 {
-		font-size: 20px;
-	}
-	a {
-		color: #666;
-	}
-	#previewform {
-		display: none;
-		padding: 20px; 
-		text-align: center;
-	}
-	strong {
-		color: #333;
-		background-color: #FAFFA6;
-		padding: 0.1em;
-	}
-	#footer {
-		margin: 20px 0;
-		font-size: 10px;
-		color: #666;
-	}
-	</style>
-	<base href="https://sam-apruve.github.io/htmlpreview.github.com/"/>
+	<script type="module">
+		import { Octokit } from "./rest.js";
+		var url_components = window.location.search.split("/");
+		var gist_id, index_filename;
+		if (url_components.includes("gist.githubusercontent.com")) {
+			url_components = url_components.slice(-3);
+			gist_id = url_components[0];
+			index_filename = url_components[2];
+		} else {
+			const urlParams = new URLSearchParams(window.location.search);
+			gist_id = urlParams.get('gist_id');
+			index_filename = urlParams.get('index_file') ?? "index.html";
+		}
+
+		var replaceAssets = function () {
+			var frame, a, link, links = [], script, scripts = [], i, href, src;
+			//Framesets
+			if (document.querySelectorAll('frameset').length)
+				return; //Don't replace CSS/JS if it's a frameset, because it will be erased by document.write()
+			//Stylesheets
+			link = document.querySelectorAll('link[rel=stylesheet]');
+			for (i = 0; i < link.length; ++i) {
+				href = link[i].href; //Get absolute URL
+				if (href.indexOf('//raw.githubusercontent.com') > 0 || href.indexOf('//bitbucket.org') > 0) { //Check if it's from raw.github.com or bitbucket.org
+					links.push(fetch(href, null)); //Then add it to links queue and fetch
+				}
+			}
+			Promise.all(links).then(function (res) {
+				for (i = 0; i < res.length; ++i) {
+					loadCSS(res[i]);
+				}
+			});
+			//Scripts
+			script = document.querySelectorAll('script[type="text/htmlpreview"]');
+			for (i = 0; i < script.length; ++i) {
+				src = script[i].src; //Get absolute URL
+				if (src.indexOf('//raw.githubusercontent.com') > 0 || src.indexOf('//bitbucket.org') > 0) { //Check if it's from raw.github.com or bitbucket.org
+					scripts.push(fetch(src, null)); //Then add it to scripts queue and fetch
+				} else {
+					script[i].removeAttribute('type');
+					scripts.push(script[i].innerHTML); //Add inline script to queue to eval in order
+				}
+			}
+			Promise.all(scripts).then(function (res) {
+				for (i = 0; i < res.length; ++i) {
+					loadJS(res[i]);
+				}
+				document.dispatchEvent(new Event('DOMContentLoaded', {bubbles: true, cancelable: true})); //Dispatch DOMContentLoaded event after loading all scripts
+			});
+		};
+
+		var loadHTML = function (url, data) {
+			if (data) {
+				data = data.replace(/<head([^>]*)>/i, '<head$1><base href="' + url + '">').replace(/<script(\s*src=["'][^"']*["'])?(\s*type=["'](text|application)\/javascript["'])?/gi, '<script type="text/htmlpreview"$1'); //Add <base> just after <head> and replace <script type="text/javascript"> with <script type="text/htmlpreview">
+				setTimeout(function () {
+					document.open();
+					document.write(data);
+					document.close();
+					replaceAssets();
+				}, 10); //Delay updating document to have it cleared before
+			}
+		};
+
+		var loadCSS = function (data) {
+			if (data) {
+				var style = document.createElement('style');
+				style.innerHTML = data;
+				document.head.appendChild(style);
+			}
+		};
+
+		var loadJS = function (data) {
+			if (data) {
+				var script = document.createElement('script');
+				script.innerHTML = data;
+				document.body.appendChild(script);
+			}
+		};
+
+		new Octokit().rest.gists.listCommits({gist_id: gist_id, per_page: 1}).then(function(response) {
+			new Octokit().rest.gists.get({gist_id: gist_id, sha: response.data[0].version}).then(function(response) {
+				const index_file = response.data.files[index_filename]
+				loadHTML(index_file.raw_url.substring(0, index_file.raw_url.lastIndexOf(index_filename)) || index_file.raw_url, index_file.content);
+			});
+		});
+
+		const i = 15;
+		const o = 3;
+		var d = new Date();
+		d.setSeconds(0);
+		d.setMilliseconds(0);
+		window.setTimeout(function() {
+			location.reload();
+		}, new Date(d.getTime() + (i - ((d.getMinutes() + i - o) % i)) * 60 * 1000).getTime() - new Date().getTime());
+		window.setInterval(function() {
+			location.reload();
+		}, (i + 1) * 60 * 1000);
+	</script>
 </head>
 <body>
-	<form id="previewform" onsubmit="location.href='?'+this.file.value;return false">
-		<h1>GitHub &amp; BitBucket HTML Preview</h1>
-		<p>
-			Enter URL of the HTML file to preview:
-			<input type="url" id="file" value="" placeholder="e.g. https://github.com/user/repo/blob/master/index.html" size="60" autofocus>
-			<input type="submit" value="Preview">
-		</p>
-		<p>or prepend to the URL: <code><strong>http://htmlpreview.github.io/?</strong>https://github.com/twbs/bootstrap/blob/gh-pages/2.3.2/index.html</code></p>
-		<p id="footer">Developed by <a href="https://github.com/niutech">niu tech</a> | Contribute on <a href="https://github.com/htmlpreview/htmlpreview.github.com">GitHub</a></p>
-	</form>
-	<script src="htmlpreview.js"></script>
 </body>
 </html>
